@@ -168,6 +168,22 @@ struct fd_configf {
     int hard_fork_fatal;
   } development;
 
+  /* Replay mode runs a minimal tile configuration for syncing
+     and replaying transactions without participating in consensus
+     or block production. This is useful for applications that want
+     to stream account state changes. */
+  struct {
+    int enabled;
+  } replay_mode;
+
+  /* Account stream (accstr) configuration for streaming account
+     updates to external processes via shared memory. */
+  struct {
+    int   enabled;
+    ulong depth;    /* Ring buffer depth (must be power of 2) */
+    ulong mtu;      /* Maximum message size */
+  } accstr;
+
   struct {
     char path[ PATH_MAX ];
   } capctx;

@@ -13,6 +13,7 @@
 #include "../../../platform/fd_file_util.h"
 #include "../../../platform/fd_net_util.h"
 #include "../../../../disco/net/fd_net_tile.h"
+#include "../../../../disco/accstr/fd_accstr_setup.h"
 
 #include "../configure/configure.h"
 
@@ -712,6 +713,25 @@ initialize_stacks( config_t const * config ) {
                    "consuming memory, or another program on the system is using pages from the same mount.",
                    tile->name, path ));
     } else if( FD_UNLIKELY( err ) ) FD_LOG_ERR(( "fd_shmem_create_multi failed" ));
+  }
+
+  /* Create accstr workspace if enabled (Firedancer only) */
+  if( FD_LIKELY( config->is_firedancer && config->firedancer.accstr.enabled ) ) {
+    char accstr_name[ 64 ];
+    FD_TEST( fd_cstr_printf_check( accstr_name, sizeof(accstr_name), NULL, "%s_accstr", config->name ) );
+
+    int err = fd_accstr_wksp_create( accstr_name,
+                                     FD_SHMEM_HUGE_PAGE_SZ,
+                                     config->firedancer.accstr.depth,
+                                     config->firedancer.accstr.mtu );
+    if( FD_UNLIKELY( err ) ) {
+      FD_LOG_WARNING(( "Failed to create accstr workspace '%s', account streaming disabled", accstr_name ));
+    } else {
+      FD_LOG_NOTICE(( "Created accstr workspace '%s' (depth=%lu, mtu=%lu)",
+                      accstr_name,
+                      config->firedancer.accstr.depth,
+                      config->firedancer.accstr.mtu ));
+    }
   }
 
   if( FD_UNLIKELY( seteuid( uid ) ) ) FD_LOG_ERR(( "seteuid() failed (%i-%s)", errno, fd_io_strerror( errno ) ));

@@ -1,0 +1,24 @@
+[package]
+name = "fd-accstr-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust consumer for firedancer account update stream"
+build = "build.rs"
+
+[lib]
+crate-type = ["rlib"]
+
+[[bin]]
+name = "accstr-example"
+path = "src/bin/example.rs"
+
+[build-dependencies]
+bindgen = "0.71"
+
+[dependencies]
+thiserror = "1.0"
+bs58 = "0.5"
+ctrlc = "3.4"
+
+[dev-dependencies]
