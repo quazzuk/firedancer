@@ -33,6 +33,9 @@ fn main() {
         );
     }
 
+    // Link C++ standard library (required for fd_tile_threads.cxx)
+    println!("cargo:rustc-link-lib=stdc++");
+
     // Source path for includes
     let mut src_path = fd_root.clone();
     src_path.push("src");
