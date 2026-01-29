@@ -392,6 +392,8 @@ finalize_new_cluster_contact_info( fd_shred_ctx_t * ctx ) {
   fd_stake_ci_dest_add_fini( ctx->stake_ci, ctx->new_dest_cnt );
 }
 
+static ulong post_epoch_countdown = 0; /* Log next N messages after EPOCH */
+
 static inline int
 before_frag( fd_shred_ctx_t * ctx,
              ulong            in_idx,
@@ -401,6 +403,14 @@ before_frag( fd_shred_ctx_t * ctx,
   static ulong bf_seen_kinds = 0;
   ulong kind = (ulong)ctx->in_kind[ in_idx ];
   bf_cnt++;
+
+  /* Log messages after EPOCH processing */
+  if( FD_UNLIKELY( post_epoch_countdown > 0 ) ) {
+    FD_LOG_NOTICE(( "shred before_frag [post-EPOCH %lu]: kind=%lu in_idx=%lu seq=%lu sig=%lu",
+                    post_epoch_countdown, kind, in_idx, seq, sig ));
+    post_epoch_countdown--;
+  }
+
   if( FD_UNLIKELY( !(bf_seen_kinds & (1UL<<kind)) ) ) {
     bf_seen_kinds |= (1UL<<kind);
     FD_LOG_NOTICE(( "shred before_frag: first kind=%lu sig=%lu", kind, sig ));
@@ -887,6 +897,7 @@ after_frag( fd_shred_ctx_t *    ctx,
         fd_shred_get_feature_activation_slot0( ctx->features_activation->slots[i], ctx );
     }
     FD_LOG_NOTICE(( "shred: EPOCH processing complete" ));
+    post_epoch_countdown = 10; /* Log next 10 messages */
     return;
   }
 

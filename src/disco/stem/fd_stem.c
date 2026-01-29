@@ -713,11 +713,6 @@ STEM_(run1)( ulong                        in_cnt,
 #endif
 
     /* Windup for the next in poll and accumulate diagnostics */
-    static ulong after_frag_cnt = 0;
-    after_frag_cnt++;
-    if( FD_UNLIKELY( (after_frag_cnt % 1000)==0 || after_frag_cnt < 10 ) ) {
-      FD_LOG_NOTICE(( "stem: after_frag windup cnt=%lu in_idx=%u seq=%lu", after_frag_cnt, this_in->idx, this_in_seq ));
-    }
 
     this_in_seq    = fd_seq_inc( this_in_seq, 1UL );
     this_in->seq   = this_in_seq;
