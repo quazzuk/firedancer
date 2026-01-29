@@ -344,28 +344,34 @@ unprivileged_init( fd_topo_t *      topo,
     }
   }
 
-  if( FD_UNLIKELY( sign_in_tile_idx==ULONG_MAX ) )
-    FD_LOG_ERR(( "tile %s:%lu had no input link named sign_gossip", tile->name, tile->kind_id ));
+  /* In replay mode, sign links don't exist (no voting/broadcasting) */
+  int has_sign_links = (sign_in_tile_idx != ULONG_MAX);
+  if( FD_UNLIKELY( !has_sign_links ) ) {
+    FD_LOG_INFO(( "tile %s:%lu has no sign_gossip link (replay mode?)", tile->name, tile->kind_id ));
+  }
 
   *ctx->net_out    = out1( topo, tile, "gossip_net"   );
-  *ctx->sign_out   = out1( topo, tile, "gossip_sign"  );
   *ctx->gossip_out = out1( topo, tile, "gossip_out"   );
   *ctx->gossvf_out = out1( topo, tile, "gossip_gossv" );
-
-  fd_topo_link_t * sign_in  = &topo->links[ tile->in_link_id [ sign_in_tile_idx  ] ];
-  fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ ctx->sign_out->idx ] ];
 
   ctx->keyswitch = fd_keyswitch_join( fd_topo_obj_laddr( topo, tile->keyswitch_obj_id ) );
   FD_TEST( ctx->keyswitch );
 
-  if( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
-                                                       sign_out->mcache,
-                                                       sign_out->dcache,
-                                                       sign_in->mcache,
-                                                       sign_in->dcache,
-                                                       sign_out->mtu ) )==NULL ) {
-    FD_LOG_ERR(( "failed to join keyguard client" ));
+  if( FD_LIKELY( has_sign_links ) ) {
+    *ctx->sign_out   = out1( topo, tile, "gossip_sign"  );
+    fd_topo_link_t * sign_in  = &topo->links[ tile->in_link_id [ sign_in_tile_idx  ] ];
+    fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ ctx->sign_out->idx ] ];
+
+    if( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
+                                                         sign_out->mcache,
+                                                         sign_out->dcache,
+                                                         sign_in->mcache,
+                                                         sign_in->dcache,
+                                                         sign_out->mtu ) )==NULL ) {
+      FD_LOG_ERR(( "failed to join keyguard client" ));
+    }
   }
+  /* else: Replay mode - no signing, keyguard_client and sign_out left uninitialized */
 
   ctx->ticks_per_ns   = fd_tempo_tick_per_ns( NULL );
   ctx->last_wallclock = fd_log_wallclock();

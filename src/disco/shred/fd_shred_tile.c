@@ -1253,7 +1253,9 @@ unprivileged_init( fd_topo_t *      topo,
                    fd_topo_tile_t * tile ) {
 
   FD_TEST( 0==strcmp( topo->links[tile->out_link_id[ NET_OUT_IDX   ]].name, "shred_net"   ) );
-  FD_TEST( 0==strcmp( topo->links[tile->out_link_id[ SIGN_OUT_IDX  ]].name, "shred_sign"  ) );
+  /* In replay mode, sign links don't exist (no block production) */
+  ulong sign_out_link_idx = fd_topo_find_tile_out_link( topo, tile, "shred_sign", tile->kind_id );
+  int has_sign_links = (sign_out_link_idx != ULONG_MAX);
 
   if( FD_UNLIKELY( !tile->out_cnt ) )
     FD_LOG_ERR(( "shred tile has no primary output link" ));
@@ -1363,22 +1365,28 @@ unprivileged_init( fd_topo_t *      topo,
   FD_TEST( ctx->keyswitch );
 
   /* populate ctx */
-  ulong sign_in_idx = fd_topo_find_tile_in_link( topo, tile, "sign_shred", tile->kind_id );
-  FD_TEST( sign_in_idx!=ULONG_MAX );
-  fd_topo_link_t * sign_in = &topo->links[ tile->in_link_id[ sign_in_idx ] ];
-  fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ SIGN_OUT_IDX ] ];
-  NONNULL( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
-                                                            sign_out->mcache,
-                                                            sign_out->dcache,
-                                                            sign_in->mcache,
-                                                            sign_in->dcache,
-                                                            sign_out->mtu ) ) );
+  /* In replay mode, sign links don't exist (no block production) */
+  void * keyguard_for_signer = NULL;
+  if( FD_LIKELY( has_sign_links ) ) {
+    ulong sign_in_idx = fd_topo_find_tile_in_link( topo, tile, "sign_shred", tile->kind_id );
+    FD_TEST( sign_in_idx!=ULONG_MAX );
+    fd_topo_link_t * sign_in = &topo->links[ tile->in_link_id[ sign_in_idx ] ];
+    fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ SIGN_OUT_IDX ] ];
+    NONNULL( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
+                                                              sign_out->mcache,
+                                                              sign_out->dcache,
+                                                              sign_in->mcache,
+                                                              sign_in->dcache,
+                                                              sign_out->mtu ) ) );
+    keyguard_for_signer = ctx->keyguard_client;
+  }
+  /* else: Replay mode - no signing, keyguard_client left uninitialized, pass NULL to shredder/resolver */
 
   ulong shred_limit = fd_ulong_if( tile->shred.larger_shred_limits_per_block, 32UL*32UL*1024UL, 32UL*1024UL );
   fd_fec_set_t * resolver_sets = fec_sets + (shred_store_mcache_depth+1UL)/2UL + 1UL;
-  ctx->shredder = NONNULL( fd_shredder_join     ( fd_shredder_new     ( _shredder, fd_shred_signer, ctx->keyguard_client ) ) );
+  ctx->shredder = NONNULL( fd_shredder_join     ( fd_shredder_new     ( _shredder, fd_shred_signer, keyguard_for_signer ) ) );
   ctx->resolver = NONNULL( fd_fec_resolver_join ( fd_fec_resolver_new ( _resolver,
-                                                                        fd_shred_signer, ctx->keyguard_client,
+                                                                        fd_shred_signer, keyguard_for_signer,
                                                                         tile->shred.fec_resolver_depth, 1UL,
                                                                         (shred_store_mcache_depth+3UL)/2UL,
                                                                         128UL * tile->shred.fec_resolver_depth, resolver_sets,
