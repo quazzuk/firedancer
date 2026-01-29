@@ -399,7 +399,7 @@ before_frag( fd_shred_ctx_t * ctx,
              ulong            sig ) {
   static ulong bf_cnt = 0;
   static ulong bf_seen_kinds = 0;
-  ulong kind = ctx->in_kind[ in_idx ];
+  ulong kind = (ulong)ctx->in_kind[ in_idx ];
   bf_cnt++;
   if( FD_UNLIKELY( !(bf_seen_kinds & (1UL<<kind)) ) ) {
     bf_seen_kinds |= (1UL<<kind);
@@ -440,7 +440,7 @@ during_frag( fd_shred_ctx_t * ctx,
 
   static ulong frag_cnt = 0;
   static ulong seen_kinds = 0;
-  ulong kind = ctx->in_kind[ in_idx ];
+  ulong kind = (ulong)ctx->in_kind[ in_idx ];
   frag_cnt++;
 
   /* Log first message of each kind, and every 1000th message */

@@ -378,11 +378,16 @@ STEM_(run1)( ulong                        in_cnt,
   async_min = fd_tempo_async_min( lazy, event_cnt, (float)fd_tempo_tick_per_ns( NULL ) );
   if( FD_UNLIKELY( !async_min ) ) FD_LOG_ERR(( "bad lazy %lu %lu", (ulong)lazy, event_cnt ));
 
-  FD_LOG_INFO(( "Running stem, cr_max = %lu", cr_max ));
+  FD_LOG_NOTICE(( "Running stem, cr_max = %lu, in_cnt = %lu, out_cnt = %lu, cons_cnt = %lu", cr_max, in_cnt, out_cnt, cons_cnt ));
   FD_MGAUGE_SET( TILE, STATUS, 1UL );
   long then = fd_tickcount();
   long now  = then;
+  static int loop_entered = 0;
   for(;;) {
+    if( FD_UNLIKELY( !loop_entered ) ) {
+      FD_LOG_NOTICE(( "stem main loop entered" ));
+      loop_entered = 1;
+    }
 
 #ifdef STEM_CALLBACK_SHOULD_SHUTDOWN
     if( FD_UNLIKELY( STEM_CALLBACK_SHOULD_SHUTDOWN( ctx ) ) ) break;
@@ -727,6 +732,8 @@ STEM_(run1)( ulong                        in_cnt,
 FD_FN_UNUSED static void
 STEM_(run)( fd_topo_t *      topo,
             fd_topo_tile_t * tile ) {
+  FD_LOG_NOTICE(( "%s:%lu stem_run: starting", tile->name, tile->kind_id ));
+
   const fd_frag_meta_t * in_mcache[ FD_TOPO_MAX_LINKS ];
   ulong * in_fseq[ FD_TOPO_MAX_TILE_IN_LINKS ];
 
@@ -740,12 +747,14 @@ STEM_(run)( fd_topo_t *      topo,
     FD_TEST( in_fseq[ polled_in_cnt ] );
     polled_in_cnt += 1;
   }
+  FD_LOG_NOTICE(( "%s:%lu stem_run: in_cnt=%lu polled_in_cnt=%lu", tile->name, tile->kind_id, tile->in_cnt, polled_in_cnt ));
 
   fd_frag_meta_t * out_mcache[ FD_TOPO_MAX_LINKS ];
   for( ulong i=0UL; i<tile->out_cnt; i++ ) {
     out_mcache[ i ] = topo->links[ tile->out_link_id[ i ] ].mcache;
     FD_TEST( out_mcache[ i ] );
   }
+  FD_LOG_NOTICE(( "%s:%lu stem_run: out_cnt=%lu", tile->name, tile->kind_id, tile->out_cnt ));
 
   ulong   reliable_cons_cnt = 0UL;
   ulong   cons_out[ FD_TOPO_MAX_LINKS ];
@@ -772,6 +781,8 @@ STEM_(run)( fd_topo_t *      topo,
   FD_TEST( fd_rng_join( fd_rng_new( rng, 0, 0UL ) ) );
 
   STEM_CALLBACK_CONTEXT_TYPE * ctx = (STEM_CALLBACK_CONTEXT_TYPE*)fd_ulong_align_up( (ulong)fd_topo_obj_laddr( topo, tile->tile_obj_id ), STEM_CALLBACK_CONTEXT_ALIGN );
+
+  FD_LOG_NOTICE(( "%s:%lu stem_run: calling run1 reliable_cons_cnt=%lu", tile->name, tile->kind_id, reliable_cons_cnt ));
 
   STEM_(run1)( polled_in_cnt,
                in_mcache,
