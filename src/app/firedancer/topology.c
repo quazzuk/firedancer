@@ -614,8 +614,8 @@ fd_topo_initialize( config_t * config ) {
     /**/                 fd_topob_link( topo, "poh_shred",    "poh_shred",    16384UL,                                  USHORT_MAX,                    1UL );
     /**/                 fd_topob_link( topo, "poh_replay",   "poh_replay",   4096UL,                                   sizeof(fd_poh_leader_slot_ended_t), 1UL );
     FOR(resolv_tile_cnt) fd_topob_link( topo, "resolv_repla", "resolv_repla", 4096UL,                                   sizeof(fd_resolv_slot_exchanged_t), 1UL );
+    /**/                 fd_topob_link( topo, "executed_txn", "executed_txn", 16384UL,                                  64UL,                          1UL ); /* TODO: Rename this ... */
   }
-  /**/                 fd_topob_link( topo, "executed_txn", "executed_txn", 16384UL,                                  64UL,                          1UL ); /* TODO: Rename this ... */
 
   /* In replay mode, skip sign tile links */
   if( FD_LIKELY( !replay_mode ) ) {
@@ -944,9 +944,9 @@ fd_topo_initialize( config_t * config ) {
   /**/                 fd_topob_tile_out(   topo, "replay",  0UL,                       "replay_out",   0UL                                                );
   /**/                 fd_topob_tile_out(   topo, "replay",  0UL,                       "replay_epoch", 0UL                                                );
   /**/                 fd_topob_tile_out(   topo, "replay",  0UL,                       "replay_exec",  0UL                                                );
-  /**/                 fd_topob_tile_out(   topo, "replay",  0UL,                       "executed_txn", 0UL                                                );
-  /* In replay mode, skip tower_out, send_out, resolv_repla, poh_replay inputs to replay */
+  /* In replay mode, skip tower_out, send_out, resolv_repla, executed_txn, poh_replay inputs to replay */
   if( FD_LIKELY( !replay_mode ) ) {
+    /**/                 fd_topob_tile_out(   topo, "replay",  0UL,                       "executed_txn", 0UL                                                );
     /**/                 fd_topob_tile_in (   topo, "replay",  0UL,          "metric_in", "tower_out",    0UL,          FD_TOPOB_RELIABLE,   FD_TOPOB_POLLED );
     /**/                 fd_topob_tile_in (   topo, "replay",  0UL,          "metric_in", "send_out",     0UL,          FD_TOPOB_RELIABLE,   FD_TOPOB_POLLED );
     FOR(resolv_tile_cnt) fd_topob_tile_in(    topo, "replay",  0UL,          "metric_in", "resolv_repla", i,            FD_TOPOB_RELIABLE,   FD_TOPOB_POLLED );
