@@ -424,6 +424,11 @@ during_frag( fd_shred_ctx_t * ctx,
              ulong            sz,
              ulong            ctl ) {
 
+  static ulong frag_cnt = 0;
+  if( FD_UNLIKELY( (++frag_cnt % 10000)==0 ) ) {
+    FD_LOG_NOTICE(( "shred during_frag: cnt=%lu kind=%lu", frag_cnt, ctx->in_kind[ in_idx ] ));
+  }
+
   ctx->skip_frag = 0;
 
   ctx->tsorig = fd_frag_meta_ts_comp( fd_tickcount() );
@@ -459,6 +464,7 @@ during_frag( fd_shred_ctx_t * ctx,
 
   /* Firedancer only */
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_EPOCH ) ) {
+    FD_LOG_NOTICE(( "shred: received EPOCH message sz=%lu", sz ));
     if( FD_UNLIKELY( chunk<ctx->in[ in_idx ].chunk0 || chunk>ctx->in[ in_idx ].wmark ) )
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz,
                    ctx->in[ in_idx ].chunk0, ctx->in[ in_idx ].wmark ));
@@ -851,13 +857,16 @@ after_frag( fd_shred_ctx_t *    ctx,
   }
 
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_EPOCH ) ) {
+    FD_LOG_NOTICE(( "shred: processing EPOCH in after_frag" ));
     fd_stake_ci_epoch_msg_fini( ctx->stake_ci );
+    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done" ));
 
     /* Correct the feature activation slots to the epoch+1 slot */
     for( ulong i=0UL; i<FD_SHRED_FEATURES_ACTIVATION_SLOT_CNT; i++ ) {
       ctx->features_activation->slots[i] =
         fd_shred_get_feature_activation_slot0( ctx->features_activation->slots[i], ctx );
     }
+    FD_LOG_NOTICE(( "shred: EPOCH processing complete" ));
     return;
   }
 
