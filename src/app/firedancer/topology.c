@@ -395,8 +395,10 @@ fd_topo_initialize( config_t * config ) {
     fd_topob_wksp( topo, "pack"         );
     fd_topob_wksp( topo, "bank"         );
     fd_topob_wksp( topo, "poh"          );
-    fd_topob_wksp( topo, "sign"         )->core_dump_level = FD_TOPO_CORE_DUMP_LEVEL_NEVER;
   }
+
+  /* sign workspace needed even in replay mode for gossip/turbine */
+  fd_topob_wksp( topo, "sign"         )->core_dump_level = FD_TOPO_CORE_DUMP_LEVEL_NEVER;
 
   fd_topob_wksp( topo, "metric_in"    );
 
@@ -449,12 +451,13 @@ fd_topo_initialize( config_t * config ) {
   fd_topob_wksp( topo, "banks_locks"  );
   fd_topob_wksp( topo, "store"        )->core_dump_level = FD_TOPO_CORE_DUMP_LEVEL_FULL;
 
-  /* In replay mode, skip sign tile workspaces and executed_txn (no consumers) */
+  /* gossip signing needed even in replay mode for turbine */
+  fd_topob_wksp( topo, "gossip_sign"  );
+  fd_topob_wksp( topo, "sign_gossip"  );
+
+  /* In replay mode, skip other sign tile workspaces and executed_txn (no consumers) */
   if( FD_LIKELY( !replay_mode ) ) {
     fd_topob_wksp( topo, "executed_txn" );
-
-    fd_topob_wksp( topo, "gossip_sign"  );
-    fd_topob_wksp( topo, "sign_gossip"  );
 
     fd_topob_wksp( topo, "shred_sign"   );
     fd_topob_wksp( topo, "sign_shred"   );
@@ -514,8 +517,8 @@ fd_topo_initialize( config_t * config ) {
       }
     }
 
-    if( FD_LIKELY( config->tiles.gui.enabled ) ) fd_topob_wksp( topo, "snapct_gui"  );
-    if( FD_LIKELY( config->tiles.gui.enabled ) ) fd_topob_wksp( topo, "snapin_gui"  );
+    if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) fd_topob_wksp( topo, "snapct_gui"  );
+    if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) fd_topob_wksp( topo, "snapin_gui"  );
     fd_topob_wksp( topo, "snapin_manif" );
     fd_topob_wksp( topo, "snapct_repr"  );
   }
@@ -542,7 +545,7 @@ fd_topo_initialize( config_t * config ) {
 
     /**/               fd_topob_link( topo, "snapin_manif", "snapin_manif", 4UL,                                      sizeof(fd_snapshot_manifest_t),1UL );
     /**/               fd_topob_link( topo, "snapct_repr",  "snapct_repr",  128UL,                                    0UL,                           1UL )->permit_no_consumers = 1; /* TODO: wire in repair later */
-    if( FD_LIKELY( config->tiles.gui.enabled ) ) {
+    if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) {
       /**/             fd_topob_link( topo, "snapct_gui",   "snapct_gui",   128UL,                                    sizeof(fd_snapct_update_t),    1UL );
       /**/             fd_topob_link( topo, "snapin_gui",   "snapin_gui",   128UL,                                    FD_GUI_CONFIG_PARSE_MAX_VALID_ACCT_SZ, 1UL );
     }
@@ -617,13 +620,14 @@ fd_topo_initialize( config_t * config ) {
     /**/                 fd_topob_link( topo, "executed_txn", "executed_txn", 16384UL,                                  64UL,                          1UL ); /* TODO: Rename this ... */
   }
 
-  /* In replay mode, skip sign tile links */
+  /* gossip signing needed even in replay mode for turbine */
+  /**/                 fd_topob_link( topo, "gossip_sign",  "gossip_sign",  128UL,                                    2048UL,                        1UL ); /* TODO: Where does 2048 come from? Depth probably doesn't need to be 128 */
+  /**/                 fd_topob_link( topo, "sign_gossip",  "sign_gossip",  128UL,                                    sizeof(fd_ed25519_sig_t),      1UL ); /* TODO: Depth probably doesn't need to be 128 */
+
+  /* In replay mode, skip other sign tile links */
   if( FD_LIKELY( !replay_mode ) ) {
     FOR(shred_tile_cnt)  fd_topob_link( topo, "shred_sign",   "shred_sign",   128UL,                                    32UL,                          1UL );
     FOR(shred_tile_cnt)  fd_topob_link( topo, "sign_shred",   "sign_shred",   128UL,                                    sizeof(fd_ed25519_sig_t),      1UL );
-
-    /**/                 fd_topob_link( topo, "gossip_sign",  "gossip_sign",  128UL,                                    2048UL,                        1UL ); /* TODO: Where does 2048 come from? Depth probably doesn't need to be 128 */
-    /**/                 fd_topob_link( topo, "sign_gossip",  "sign_gossip",  128UL,                                    sizeof(fd_ed25519_sig_t),      1UL ); /* TODO: Depth probably doesn't need to be 128 */
 
     FOR(sign_tile_cnt-1) fd_topob_link( topo, "repair_sign",  "repair_sign",  256UL,                                    FD_REPAIR_MAX_PREIMAGE_SZ,     1UL ); /* See repair_tile.c for explanation */
     FOR(sign_tile_cnt-1) fd_topob_link( topo, "sign_repair",  "sign_repair",  128UL,                                    sizeof(fd_ed25519_sig_t),      1UL );
@@ -734,13 +738,16 @@ fd_topo_initialize( config_t * config ) {
     FOR(resolv_tile_cnt) strncpy( topo->tiles[ topo->tile_cnt-1UL-i ].metrics_name, "resolf", 8UL );
   }
 
-  /* In replay mode, skip block production tiles (pack, bank, poh, sign) */
+  /* In replay mode, skip block production tiles (pack, bank, poh) but keep one sign tile for gossip */
   if( FD_LIKELY( !replay_mode ) ) {
     /**/                 fd_topob_tile( topo, "pack",    "pack",    "metric_in",  tile_to_cpu[ topo->tile_cnt ], 0,        config->tiles.bundle.enabled );
     FOR(bank_tile_cnt)   fd_topob_tile( topo, "bank",    "bank",    "metric_in",  tile_to_cpu[ topo->tile_cnt ], 0,        0 );
     FOR(bank_tile_cnt)   strncpy( topo->tiles[ topo->tile_cnt-1UL-i ].metrics_name, "bankf", 6UL );
     /**/                 fd_topob_tile( topo, "poh",     "poh",     "metric_in",  tile_to_cpu[ topo->tile_cnt ], 0,        1 );
     FOR(sign_tile_cnt)   fd_topob_tile( topo, "sign",    "sign",    "metric_in",  tile_to_cpu[ topo->tile_cnt ], 0,        1 );
+  } else {
+    /* Replay mode: need one sign tile for gossip (turbine) */
+    /**/                 fd_topob_tile( topo, "sign",    "sign",    "metric_in",  tile_to_cpu[ topo->tile_cnt ], 0,        1 );
   }
 
   if( FD_UNLIKELY( rpc_enabled ) ) {
@@ -862,7 +869,7 @@ fd_topo_initialize( config_t * config ) {
                       fd_topob_tile_in (    topo, "snapct",  0UL,          "metric_in", "snapld_dc",    0UL,          FD_TOPOB_RELIABLE,   FD_TOPOB_POLLED );
                       fd_topob_tile_out(    topo, "snapct",  0UL,                       "snapct_ld",    0UL                                                );
                       fd_topob_tile_out(    topo, "snapct",  0UL,                       "snapct_repr",  0UL                                                );
-    if( FD_LIKELY( config->tiles.gui.enabled ) ) {
+    if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) {
       /**/            fd_topob_tile_out(    topo, "snapct",  0UL,                       "snapct_gui",   0UL                                                );
     }
 
@@ -921,7 +928,7 @@ fd_topo_initialize( config_t * config ) {
     /**/              fd_topob_tile_out(    topo, "snapdc",  0UL,                       "snapdc_in",    0UL                                                );
 
                       fd_topob_tile_in (    topo, "snapin",  0UL,          "metric_in", "snapdc_in",    0UL,          FD_TOPOB_RELIABLE,   FD_TOPOB_POLLED );
-    if( FD_LIKELY( config->tiles.gui.enabled ) ) {
+    if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) {
       /**/            fd_topob_tile_out(    topo, "snapin", 0UL,                        "snapin_gui",   0UL                                                );
     }
                       fd_topob_tile_out(    topo, "snapin",  0UL,                       "snapin_manif", 0UL                                                );
@@ -1062,20 +1069,22 @@ fd_topo_initialize( config_t * config ) {
     /* TODO: bundle gui support needs to be integrated here */
   }
 
-  /* In replay mode, skip sign tile wiring - sign tile doesn't exist */
+  /* Sign links don't need to be reliable because they are synchronous,
+     so there's at most one fragment in flight at a time anyway.  The
+     sign links are also not polled by fd_stem, instead the tiles will
+     read the sign responses out of band in a dedicated spin loop.
+
+     TODO: This can probably be fixed now to be relible ... ? */
+
+  /* gossip↔sign wiring needed even in replay mode for turbine */
+  /*                                        topo, tile_name, tile_kind_id, fseq_wksp,   link_name,      link_kind_id, reliable,            polled */
+  /**/                 fd_topob_tile_in (   topo, "sign",    0UL,          "metric_in", "gossip_sign",  0UL,          FD_TOPOB_UNRELIABLE, FD_TOPOB_POLLED   );
+  /**/                 fd_topob_tile_out(   topo, "gossip",  0UL,                       "gossip_sign",  0UL                                                  );
+  /**/                 fd_topob_tile_in (   topo, "gossip",  0UL,          "metric_in", "sign_gossip",  0UL,          FD_TOPOB_UNRELIABLE, FD_TOPOB_UNPOLLED );
+  /**/                 fd_topob_tile_out(   topo, "sign",    0UL,                       "sign_gossip",  0UL                                                  );
+
+  /* In replay mode, skip other sign tile wiring */
   if( FD_LIKELY( !replay_mode ) ) {
-    /* Sign links don't need to be reliable because they are synchronous,
-       so there's at most one fragment in flight at a time anyway.  The
-       sign links are also not polled by fd_stem, instead the tiles will
-       read the sign responses out of band in a dedicated spin loop.
-
-       TODO: This can probably be fixed now to be relible ... ? */
-    /*                                        topo, tile_name, tile_kind_id, fseq_wksp,   link_name,      link_kind_id, reliable,            polled */
-    /**/                 fd_topob_tile_in (   topo, "sign",    0UL,          "metric_in", "gossip_sign",  0UL,          FD_TOPOB_UNRELIABLE, FD_TOPOB_POLLED   );
-    /**/                 fd_topob_tile_out(   topo, "gossip",  0UL,                       "gossip_sign",  0UL                                                  );
-    /**/                 fd_topob_tile_in (   topo, "gossip",  0UL,          "metric_in", "sign_gossip",  0UL,          FD_TOPOB_UNRELIABLE, FD_TOPOB_UNPOLLED );
-    /**/                 fd_topob_tile_out(   topo, "sign",    0UL,                       "sign_gossip",  0UL                                                  );
-
     for( ulong i=0UL; i<shred_tile_cnt; i++ ) {
       /**/               fd_topob_tile_in (   topo, "sign",    0UL,          "metric_in", "shred_sign",   i,            FD_TOPOB_UNRELIABLE, FD_TOPOB_POLLED   );
       /**/               fd_topob_tile_out(   topo, "shred",   i,                         "shred_sign",   i                                                    );
@@ -1281,7 +1290,8 @@ fd_topo_initialize( config_t * config ) {
     FOR(bank_tile_cnt)   fd_topob_tile_uses( topo, &topo->tiles[ fd_topo_find_tile( topo, "bank",   i   ) ], progcache_obj, FD_SHMEM_JOIN_MODE_READ_WRITE );
   }
 
-  if( FD_LIKELY( config->tiles.gui.enabled ) ) {
+  /* GUI disabled in replay mode - it accesses tiles that don't exist */
+  if( FD_LIKELY( config->tiles.gui.enabled && !replay_mode ) ) {
     fd_topob_wksp( topo, "gui"        );
     fd_topob_wksp( topo, "gui_replay" );
 
