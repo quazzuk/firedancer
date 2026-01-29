@@ -320,10 +320,20 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
   return FD_LAYOUT_FINI( l, scratch_align() );
 }
 
+static ulong post_epoch_hk_countdown = 0;
+
 static inline void
 during_housekeeping( fd_shred_ctx_t * ctx ) {
   static ulong hk_cnt = 0;
-  if( FD_UNLIKELY( (++hk_cnt % 100000)==1 ) ) {
+  hk_cnt++;
+
+  /* Log housekeeping after EPOCH for debugging */
+  if( FD_UNLIKELY( post_epoch_hk_countdown > 0 ) ) {
+    if( (post_epoch_hk_countdown % 10000)==0 ) {
+      FD_LOG_NOTICE(( "shred housekeeping [post-EPOCH %lu]: cnt=%lu", post_epoch_hk_countdown, hk_cnt ));
+    }
+    post_epoch_hk_countdown--;
+  } else if( FD_UNLIKELY( (hk_cnt % 100000)==1 ) ) {
     FD_LOG_NOTICE(( "shred housekeeping: cnt=%lu", hk_cnt ));
   }
 
@@ -898,6 +908,7 @@ after_frag( fd_shred_ctx_t *    ctx,
     }
     FD_LOG_NOTICE(( "shred: EPOCH processing complete" ));
     post_epoch_countdown = 10; /* Log next 10 messages */
+    post_epoch_hk_countdown = 100000; /* Log housekeeping for a while */
     return;
   }
 
