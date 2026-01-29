@@ -392,6 +392,15 @@ before_frag( fd_shred_ctx_t * ctx,
              ulong            in_idx,
              ulong            seq,
              ulong            sig ) {
+  static ulong bf_cnt = 0;
+  static ulong bf_seen_kinds = 0;
+  ulong kind = ctx->in_kind[ in_idx ];
+  bf_cnt++;
+  if( FD_UNLIKELY( !(bf_seen_kinds & (1UL<<kind)) ) ) {
+    bf_seen_kinds |= (1UL<<kind);
+    FD_LOG_NOTICE(( "shred before_frag: first kind=%lu sig=%lu", kind, sig ));
+  }
+
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_IPECHO ) ) {
     FD_TEST( sig!=0UL && sig<=USHORT_MAX );
     fd_shredder_set_shred_version    ( ctx->shredder, (ushort)sig );
@@ -425,8 +434,14 @@ during_frag( fd_shred_ctx_t * ctx,
              ulong            ctl ) {
 
   static ulong frag_cnt = 0;
-  if( FD_UNLIKELY( (++frag_cnt % 10000)==0 ) ) {
-    FD_LOG_NOTICE(( "shred during_frag: cnt=%lu kind=%lu", frag_cnt, ctx->in_kind[ in_idx ] ));
+  static ulong seen_kinds = 0;
+  ulong kind = ctx->in_kind[ in_idx ];
+  frag_cnt++;
+
+  /* Log first message of each kind, and every 1000th message */
+  if( FD_UNLIKELY( !(seen_kinds & (1UL<<kind)) || (frag_cnt % 1000)==0 ) ) {
+    seen_kinds |= (1UL<<kind);
+    FD_LOG_NOTICE(( "shred during_frag: cnt=%lu kind=%lu chunk=%lu sz=%lu", frag_cnt, kind, chunk, sz ));
   }
 
   ctx->skip_frag = 0;
