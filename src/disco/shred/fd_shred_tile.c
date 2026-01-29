@@ -515,6 +515,15 @@ during_frag( fd_shred_ctx_t * ctx,
     FD_LOG_NOTICE(( "shred: EPOCH msg details: epoch=%lu staked_cnt=%lu start_slot=%lu slot_cnt=%lu",
                     epoch_msg->epoch, epoch_msg->staked_cnt, epoch_msg->start_slot, epoch_msg->slot_cnt ));
 
+    /* Validate message size matches staked_cnt */
+    ulong expected_sz = fd_epoch_info_msg_sz( epoch_msg->staked_cnt );
+    if( FD_UNLIKELY( sz < expected_sz ) ) {
+      FD_LOG_WARNING(( "shred: EPOCH message truncated! sz=%lu but expected=%lu for staked_cnt=%lu, skipping",
+                       sz, expected_sz, epoch_msg->staked_cnt ));
+      ctx->skip_frag = 1;
+      return;
+    }
+
     fd_stake_ci_epoch_msg_init( ctx->stake_ci, epoch_msg );
 
     /* Store the feature activation slots, note that they will be incorrect
