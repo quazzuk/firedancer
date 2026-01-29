@@ -322,6 +322,11 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
 
 static inline void
 during_housekeeping( fd_shred_ctx_t * ctx ) {
+  static ulong hk_cnt = 0;
+  if( FD_UNLIKELY( (++hk_cnt % 100000)==1 ) ) {
+    FD_LOG_NOTICE(( "shred housekeeping: cnt=%lu", hk_cnt ));
+  }
+
   if( FD_UNLIKELY( fd_keyswitch_state_query( ctx->keyswitch )==FD_KEYSWITCH_STATE_SWITCH_PENDING ) ) {
     ulong seq_must_complete = ctx->keyswitch->param;
 
