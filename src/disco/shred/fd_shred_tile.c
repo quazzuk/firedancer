@@ -512,6 +512,9 @@ during_frag( fd_shred_ctx_t * ctx,
     uchar const *               dcache_entry = fd_chunk_to_laddr_const( ctx->in[ in_idx ].mem, chunk );
     fd_epoch_info_msg_t const * epoch_msg    = fd_type_pun_const( dcache_entry );
 
+    FD_LOG_NOTICE(( "shred: EPOCH msg details: epoch=%lu staked_cnt=%lu start_slot=%lu slot_cnt=%lu",
+                    epoch_msg->epoch, epoch_msg->staked_cnt, epoch_msg->start_slot, epoch_msg->slot_cnt ));
+
     fd_stake_ci_epoch_msg_init( ctx->stake_ci, epoch_msg );
 
     /* Store the feature activation slots, note that they will be incorrect
@@ -899,7 +902,12 @@ after_frag( fd_shred_ctx_t *    ctx,
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_EPOCH ) ) {
     FD_LOG_NOTICE(( "shred: processing EPOCH in after_frag" ));
     fd_stake_ci_epoch_msg_fini( ctx->stake_ci );
-    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done" ));
+    /* Log stake_ci state after fini */
+    fd_per_epoch_info_t const * ei = ctx->stake_ci->epoch_info;
+    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done, epoch_info[0]: epoch=%lu start=%lu cnt=%lu sdest=%p",
+                    ei[0].epoch, ei[0].start_slot, ei[0].slot_cnt, (void*)ei[0].sdest ));
+    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done, epoch_info[1]: epoch=%lu start=%lu cnt=%lu sdest=%p",
+                    ei[1].epoch, ei[1].start_slot, ei[1].slot_cnt, (void*)ei[1].sdest ));
 
     /* Correct the feature activation slots to the epoch+1 slot */
     for( ulong i=0UL; i<FD_SHRED_FEATURES_ACTIVATION_SLOT_CNT; i++ ) {
