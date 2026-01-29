@@ -1401,6 +1401,7 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->fec_sets = fec_sets;
 
   ctx->stake_ci = fd_stake_ci_join( fd_stake_ci_new( _stake_ci, ctx->identity_key ) );
+  FD_LOG_NOTICE(( "shred tile %lu: stake_ci initialized", tile->kind_id ));
 
   ctx->net_id   = (ushort)0;
 
@@ -1534,6 +1535,8 @@ unprivileged_init( fd_topo_t *      topo,
     FD_LOG_ERR(( "scratch overflow %lu %lu %lu", scratch_top - (ulong)scratch - scratch_footprint( tile ), scratch_top, (ulong)scratch + scratch_footprint( tile ) ));
 
   memset( ctx->block_ids, 0, sizeof(ctx->block_ids) );
+
+  FD_LOG_NOTICE(( "shred tile %lu: initialization complete", tile->kind_id ));
 }
 
 static ulong
