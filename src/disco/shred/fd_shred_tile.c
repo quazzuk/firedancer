@@ -320,23 +320,8 @@ scratch_footprint( fd_topo_tile_t const * tile ) {
   return FD_LAYOUT_FINI( l, scratch_align() );
 }
 
-static ulong post_epoch_hk_countdown = 0;
-
 static inline void
 during_housekeeping( fd_shred_ctx_t * ctx ) {
-  static ulong hk_cnt = 0;
-  hk_cnt++;
-
-  /* Log housekeeping after EPOCH for debugging */
-  if( FD_UNLIKELY( post_epoch_hk_countdown > 0 ) ) {
-    if( (post_epoch_hk_countdown % 10000)==0 ) {
-      FD_LOG_NOTICE(( "shred housekeeping [post-EPOCH %lu]: cnt=%lu", post_epoch_hk_countdown, hk_cnt ));
-    }
-    post_epoch_hk_countdown--;
-  } else if( FD_UNLIKELY( (hk_cnt % 100000)==1 ) ) {
-    FD_LOG_NOTICE(( "shred housekeeping: cnt=%lu", hk_cnt ));
-  }
-
   if( FD_UNLIKELY( fd_keyswitch_state_query( ctx->keyswitch )==FD_KEYSWITCH_STATE_SWITCH_PENDING ) ) {
     ulong seq_must_complete = ctx->keyswitch->param;
 
@@ -402,29 +387,12 @@ finalize_new_cluster_contact_info( fd_shred_ctx_t * ctx ) {
   fd_stake_ci_dest_add_fini( ctx->stake_ci, ctx->new_dest_cnt );
 }
 
-static ulong post_epoch_countdown = 0; /* Log next N messages after EPOCH */
-
 static inline int
 before_frag( fd_shred_ctx_t * ctx,
              ulong            in_idx,
              ulong            seq,
              ulong            sig ) {
-  static ulong bf_cnt = 0;
-  static ulong bf_seen_kinds = 0;
-  ulong kind = (ulong)ctx->in_kind[ in_idx ];
-  bf_cnt++;
-
-  /* Log messages after EPOCH processing */
-  if( FD_UNLIKELY( post_epoch_countdown > 0 ) ) {
-    FD_LOG_NOTICE(( "shred before_frag [post-EPOCH %lu]: kind=%lu in_idx=%lu seq=%lu sig=%lu",
-                    post_epoch_countdown, kind, in_idx, seq, sig ));
-    post_epoch_countdown--;
-  }
-
-  if( FD_UNLIKELY( !(bf_seen_kinds & (1UL<<kind)) ) ) {
-    bf_seen_kinds |= (1UL<<kind);
-    FD_LOG_NOTICE(( "shred before_frag: first kind=%lu sig=%lu", kind, sig ));
-  }
+  (void)seq;
 
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_IPECHO ) ) {
     FD_TEST( sig!=0UL && sig<=USHORT_MAX );
@@ -457,18 +425,6 @@ during_frag( fd_shred_ctx_t * ctx,
              ulong            chunk,
              ulong            sz,
              ulong            ctl ) {
-
-  static ulong frag_cnt = 0;
-  static ulong seen_kinds = 0;
-  ulong kind = (ulong)ctx->in_kind[ in_idx ];
-  frag_cnt++;
-
-  /* Log first message of each kind, and every 1000th message */
-  if( FD_UNLIKELY( !(seen_kinds & (1UL<<kind)) || (frag_cnt % 1000)==0 ) ) {
-    seen_kinds |= (1UL<<kind);
-    FD_LOG_NOTICE(( "shred during_frag: cnt=%lu kind=%lu chunk=%lu sz=%lu", frag_cnt, kind, chunk, sz ));
-  }
-
   ctx->skip_frag = 0;
 
   ctx->tsorig = fd_frag_meta_ts_comp( fd_tickcount() );
@@ -504,7 +460,6 @@ during_frag( fd_shred_ctx_t * ctx,
 
   /* Firedancer only */
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_EPOCH ) ) {
-    FD_LOG_NOTICE(( "shred: received EPOCH message sz=%lu", sz ));
     if( FD_UNLIKELY( chunk<ctx->in[ in_idx ].chunk0 || chunk>ctx->in[ in_idx ].wmark ) )
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz,
                    ctx->in[ in_idx ].chunk0, ctx->in[ in_idx ].wmark ));
@@ -512,13 +467,10 @@ during_frag( fd_shred_ctx_t * ctx,
     uchar const *               dcache_entry = fd_chunk_to_laddr_const( ctx->in[ in_idx ].mem, chunk );
     fd_epoch_info_msg_t const * epoch_msg    = fd_type_pun_const( dcache_entry );
 
-    FD_LOG_NOTICE(( "shred: EPOCH msg details: epoch=%lu staked_cnt=%lu start_slot=%lu slot_cnt=%lu",
-                    epoch_msg->epoch, epoch_msg->staked_cnt, epoch_msg->start_slot, epoch_msg->slot_cnt ));
-
     /* Validate message size matches staked_cnt */
     ulong expected_sz = fd_epoch_info_msg_sz( epoch_msg->staked_cnt );
     if( FD_UNLIKELY( sz < expected_sz ) ) {
-      FD_LOG_WARNING(( "shred: EPOCH message truncated! sz=%lu but expected=%lu for staked_cnt=%lu, skipping",
+      FD_LOG_WARNING(( "EPOCH message truncated: sz=%lu expected=%lu staked_cnt=%lu",
                        sz, expected_sz, epoch_msg->staked_cnt ));
       ctx->skip_frag = 1;
       return;
@@ -909,23 +861,13 @@ after_frag( fd_shred_ctx_t *    ctx,
   }
 
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_EPOCH ) ) {
-    FD_LOG_NOTICE(( "shred: processing EPOCH in after_frag" ));
     fd_stake_ci_epoch_msg_fini( ctx->stake_ci );
-    /* Log stake_ci state after fini */
-    fd_per_epoch_info_t const * ei = ctx->stake_ci->epoch_info;
-    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done, epoch_info[0]: epoch=%lu start=%lu cnt=%lu sdest=%p",
-                    ei[0].epoch, ei[0].start_slot, ei[0].slot_cnt, (void*)ei[0].sdest ));
-    FD_LOG_NOTICE(( "shred: EPOCH msg_fini done, epoch_info[1]: epoch=%lu start=%lu cnt=%lu sdest=%p",
-                    ei[1].epoch, ei[1].start_slot, ei[1].slot_cnt, (void*)ei[1].sdest ));
 
     /* Correct the feature activation slots to the epoch+1 slot */
     for( ulong i=0UL; i<FD_SHRED_FEATURES_ACTIVATION_SLOT_CNT; i++ ) {
       ctx->features_activation->slots[i] =
         fd_shred_get_feature_activation_slot0( ctx->features_activation->slots[i], ctx );
     }
-    FD_LOG_NOTICE(( "shred: EPOCH processing complete" ));
-    post_epoch_countdown = 10; /* Log next 10 messages */
-    post_epoch_hk_countdown = 100000; /* Log housekeeping for a while */
     return;
   }
 
@@ -1469,7 +1411,6 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->fec_sets = fec_sets;
 
   ctx->stake_ci = fd_stake_ci_join( fd_stake_ci_new( _stake_ci, ctx->identity_key ) );
-  FD_LOG_NOTICE(( "shred tile %lu: stake_ci initialized", tile->kind_id ));
 
   ctx->net_id   = (ushort)0;
 
@@ -1603,8 +1544,6 @@ unprivileged_init( fd_topo_t *      topo,
     FD_LOG_ERR(( "scratch overflow %lu %lu %lu", scratch_top - (ulong)scratch - scratch_footprint( tile ), scratch_top, (ulong)scratch + scratch_footprint( tile ) ));
 
   memset( ctx->block_ids, 0, sizeof(ctx->block_ids) );
-
-  FD_LOG_NOTICE(( "shred tile %lu: initialization complete", tile->kind_id ));
 }
 
 static ulong
