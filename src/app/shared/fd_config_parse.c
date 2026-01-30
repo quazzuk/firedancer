@@ -123,6 +123,10 @@ fd_config_extract_podf( uchar *        pod,
 
   CFG_POP      ( bool,   development.hard_fork_fatal                         );
 
+  CFG_POP      ( bool,   accstr.enabled                                      );
+  CFG_POP      ( ulong,  accstr.depth                                        );
+  CFG_POP      ( ulong,  accstr.mtu                                          );
+
   return config;
 }
 

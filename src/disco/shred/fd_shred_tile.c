@@ -466,6 +466,15 @@ during_frag( fd_shred_ctx_t * ctx,
     uchar const *               dcache_entry = fd_chunk_to_laddr_const( ctx->in[ in_idx ].mem, chunk );
     fd_epoch_info_msg_t const * epoch_msg    = fd_type_pun_const( dcache_entry );
 
+    /* Validate message size matches staked_cnt */
+    ulong expected_sz = fd_epoch_info_msg_sz( epoch_msg->staked_cnt );
+    if( FD_UNLIKELY( sz < expected_sz ) ) {
+      FD_LOG_WARNING(( "EPOCH message truncated: sz=%lu expected=%lu staked_cnt=%lu",
+                       sz, expected_sz, epoch_msg->staked_cnt ));
+      ctx->skip_frag = 1;
+      return;
+    }
+
     fd_stake_ci_epoch_msg_init( ctx->stake_ci, epoch_msg );
 
     /* Store the feature activation slots, note that they will be incorrect

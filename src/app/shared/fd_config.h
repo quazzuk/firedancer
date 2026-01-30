@@ -168,6 +168,14 @@ struct fd_configf {
     int hard_fork_fatal;
   } development;
 
+  /* Account stream (accstr) configuration for streaming account
+     updates to external processes via shared memory. */
+  struct {
+    int   enabled;
+    ulong depth;    /* Ring buffer depth (must be power of 2) */
+    ulong mtu;      /* Maximum message size */
+  } accstr;
+
   struct {
     char path[ PATH_MAX ];
   } capctx;

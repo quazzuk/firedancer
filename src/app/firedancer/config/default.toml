@@ -587,6 +587,24 @@ user = ""
         # is not recommended to change this setting.
         mean_cache_entry_size = 131072
 
+# Account stream (accstr) configuration for streaming account updates
+# to external processes via shared memory with sub-microsecond latency.
+#
+# When enabled, the exec tiles will publish account updates to a shared
+# memory workspace that external consumers can attach to.
+#
+# See src/disco/accstr/README.md for consumer API documentation.
+[accstr]
+    enabled = false
+
+    # Ring buffer depth (number of entries). Must be a power of 2.
+    # Larger depth allows consumers to fall behind without overruns.
+    depth = 32768
+
+    # Maximum message size (account data size + header).
+    # Default is 10MB + 100 byte header to match Solana's max account size.
+    mtu = 10485860
+
 # CPU cores in Firedancer are carefully managed.  Where a typical
 # program lets the operating system scheduler determine which threads to
 # run on which cores and for how long, Firedancer overrides most of this
