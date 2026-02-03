@@ -1,0 +1,49 @@
+# Replay mode configuration for Firedancer.
+#
+# This configuration enables replay mode which runs a minimal tile
+# configuration for syncing and replaying transactions without participating
+# in consensus or block production.
+#
+# Usage:
+#   firedancer run --config replay.toml --config mainnet.toml
+#
+# Or combine with other configs as needed:
+#   firedancer run --config replay.toml --config testnet.toml
+
+[replay_mode]
+    enabled = true
+
+# Minimal tile layout for replay mode.
+# Only essential tiles are needed:
+#   - net: Network I/O (1 tile)
+#   - shred: FEC resolution (1-2 tiles)
+#   - repair: Missing shred recovery (1 tile)
+#   - replay: Deshredding and dispatch (1 tile)
+#   - exec: Transaction execution (2-4 tiles)
+#   - gossip: Peer discovery (1 tile)
+#   - metric: Monitoring (1 tile)
+#
+# Disabled tiles (set to 0 by replay_mode):
+#   - quic, verify, dedup, resolv (TPU pipeline)
+#   - pack, bank, poh, sign (block production)
+#   - tower, send (voting)
+[layout]
+    net_tile_count    = 1
+    shred_tile_count  = 1
+
+    # TPU pipeline tiles (set to 1 to pass validation; replay_mode skips them anyway)
+    quic_tile_count   = 1
+    verify_tile_count = 1
+    resolv_tile_count = 1
+    bank_tile_count   = 1
+
+    # Reduce other tiles for minimal footprint
+    gossvf_tile_count = 1
+
+    # Reduce exec tiles for replay mode (adjust based on your CPU count)
+    exec_tile_count   = 2
+
+# Accstr (account streaming) configuration.
+# This enables streaming account updates to external consumers.
+[accstr]
+    enabled = true

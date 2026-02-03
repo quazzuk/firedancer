@@ -392,6 +392,8 @@ before_frag( fd_shred_ctx_t * ctx,
              ulong            in_idx,
              ulong            seq,
              ulong            sig ) {
+  (void)seq;
+
   if( FD_UNLIKELY( ctx->in_kind[ in_idx ]==IN_KIND_IPECHO ) ) {
     FD_TEST( sig!=0UL && sig<=USHORT_MAX );
     fd_shredder_set_shred_version    ( ctx->shredder, (ushort)sig );
@@ -423,7 +425,6 @@ during_frag( fd_shred_ctx_t * ctx,
              ulong            chunk,
              ulong            sz,
              ulong            ctl ) {
-
   ctx->skip_frag = 0;
 
   ctx->tsorig = fd_frag_meta_ts_comp( fd_tickcount() );
@@ -465,6 +466,15 @@ during_frag( fd_shred_ctx_t * ctx,
 
     uchar const *               dcache_entry = fd_chunk_to_laddr_const( ctx->in[ in_idx ].mem, chunk );
     fd_epoch_info_msg_t const * epoch_msg    = fd_type_pun_const( dcache_entry );
+
+    /* Validate message size matches staked_cnt */
+    ulong expected_sz = fd_epoch_info_msg_sz( epoch_msg->staked_cnt );
+    if( FD_UNLIKELY( sz < expected_sz ) ) {
+      FD_LOG_WARNING(( "EPOCH message truncated: sz=%lu expected=%lu staked_cnt=%lu",
+                       sz, expected_sz, epoch_msg->staked_cnt ));
+      ctx->skip_frag = 1;
+      return;
+    }
 
     fd_stake_ci_epoch_msg_init( ctx->stake_ci, epoch_msg );
 
@@ -1253,7 +1263,9 @@ unprivileged_init( fd_topo_t *      topo,
                    fd_topo_tile_t * tile ) {
 
   FD_TEST( 0==strcmp( topo->links[tile->out_link_id[ NET_OUT_IDX   ]].name, "shred_net"   ) );
-  FD_TEST( 0==strcmp( topo->links[tile->out_link_id[ SIGN_OUT_IDX  ]].name, "shred_sign"  ) );
+  /* In replay mode, sign links don't exist (no block production) */
+  ulong sign_out_link_idx = fd_topo_find_tile_out_link( topo, tile, "shred_sign", tile->kind_id );
+  int has_sign_links = (sign_out_link_idx != ULONG_MAX);
 
   if( FD_UNLIKELY( !tile->out_cnt ) )
     FD_LOG_ERR(( "shred tile has no primary output link" ));
@@ -1363,22 +1375,28 @@ unprivileged_init( fd_topo_t *      topo,
   FD_TEST( ctx->keyswitch );
 
   /* populate ctx */
-  ulong sign_in_idx = fd_topo_find_tile_in_link( topo, tile, "sign_shred", tile->kind_id );
-  FD_TEST( sign_in_idx!=ULONG_MAX );
-  fd_topo_link_t * sign_in = &topo->links[ tile->in_link_id[ sign_in_idx ] ];
-  fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ SIGN_OUT_IDX ] ];
-  NONNULL( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
-                                                            sign_out->mcache,
-                                                            sign_out->dcache,
-                                                            sign_in->mcache,
-                                                            sign_in->dcache,
-                                                            sign_out->mtu ) ) );
+  /* In replay mode, sign links don't exist (no block production) */
+  void * keyguard_for_signer = NULL;
+  if( FD_LIKELY( has_sign_links ) ) {
+    ulong sign_in_idx = fd_topo_find_tile_in_link( topo, tile, "sign_shred", tile->kind_id );
+    FD_TEST( sign_in_idx!=ULONG_MAX );
+    fd_topo_link_t * sign_in = &topo->links[ tile->in_link_id[ sign_in_idx ] ];
+    fd_topo_link_t * sign_out = &topo->links[ tile->out_link_id[ SIGN_OUT_IDX ] ];
+    NONNULL( fd_keyguard_client_join( fd_keyguard_client_new( ctx->keyguard_client,
+                                                              sign_out->mcache,
+                                                              sign_out->dcache,
+                                                              sign_in->mcache,
+                                                              sign_in->dcache,
+                                                              sign_out->mtu ) ) );
+    keyguard_for_signer = ctx->keyguard_client;
+  }
+  /* else: Replay mode - no signing, keyguard_client left uninitialized, pass NULL to shredder/resolver */
 
   ulong shred_limit = fd_ulong_if( tile->shred.larger_shred_limits_per_block, 32UL*32UL*1024UL, 32UL*1024UL );
   fd_fec_set_t * resolver_sets = fec_sets + (shred_store_mcache_depth+1UL)/2UL + 1UL;
-  ctx->shredder = NONNULL( fd_shredder_join     ( fd_shredder_new     ( _shredder, fd_shred_signer, ctx->keyguard_client ) ) );
+  ctx->shredder = NONNULL( fd_shredder_join     ( fd_shredder_new     ( _shredder, fd_shred_signer, keyguard_for_signer ) ) );
   ctx->resolver = NONNULL( fd_fec_resolver_join ( fd_fec_resolver_new ( _resolver,
-                                                                        fd_shred_signer, ctx->keyguard_client,
+                                                                        fd_shred_signer, keyguard_for_signer,
                                                                         tile->shred.fec_resolver_depth, 1UL,
                                                                         (shred_store_mcache_depth+3UL)/2UL,
                                                                         128UL * tile->shred.fec_resolver_depth, resolver_sets,

@@ -558,6 +558,8 @@ replay_slot_completed( ctx_t *                      ctx,
                        ulong                        tsorig,
                        fd_stem_context_t *          stem ) {
 
+  FD_LOG_WARNING(( "tower: replay_slot_completed entered, slot=%lu", slot_completed->slot ));
+
   /* Initialize slot watermarks on the first replay_slot_completed. */
 
   if( FD_UNLIKELY( ctx->init_slot == ULONG_MAX ) ) {
@@ -565,6 +567,7 @@ replay_slot_completed( ctx_t *                      ctx,
     ctx->root_slot = slot_completed->slot;
     ctx->conf_slot = slot_completed->slot;
     ctx->supc_slot = slot_completed->slot;
+    FD_LOG_WARNING(( "tower: initialized init_slot=%lu", ctx->init_slot ));
   }
 
     if( FD_UNLIKELY( 0==memcmp( &slot_completed->block_id.uc, &hash_null, sizeof(fd_hash_t) ) ) ) {

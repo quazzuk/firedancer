@@ -1476,9 +1476,13 @@ unprivileged_init( fd_topo_t *      topo,
   if( FD_UNLIKELY( ctx->shred_listen_port!=0 && ctx->shred_out->mcache==NULL ) ) {
     FD_LOG_ERR(( "shred listen port set but no out link was found" ));
   } else if( FD_UNLIKELY( ctx->quic_transaction_listen_port!=0 && ctx->quic_out->mcache==NULL ) ) {
-    FD_LOG_ERR(( "quic transaction listen port set but no out link was found" ));
+    /* In replay mode, quic tiles don't exist (no TPU). Disable the port and log a warning. */
+    FD_LOG_WARNING(( "quic transaction listen port set but no out link was found (replay mode?). Disabling QUIC transaction port." ));
+    ctx->quic_transaction_listen_port = 0;
   } else if( FD_UNLIKELY( ctx->legacy_transaction_listen_port!=0 && ctx->quic_out->mcache==NULL ) ) {
-    FD_LOG_ERR(( "legacy transaction listen port set but no out link was found" ));
+    /* In replay mode, quic tiles don't exist (no TPU). Disable the port and log a warning. */
+    FD_LOG_WARNING(( "legacy transaction listen port set but no out link was found (replay mode?). Disabling legacy transaction port." ));
+    ctx->legacy_transaction_listen_port = 0;
   } else if( FD_UNLIKELY( ctx->gossip_listen_port!=0 && ctx->gossvf_out->mcache==NULL ) ) {
     FD_LOG_ERR(( "gossip listen port set but no out link was found" ));
   } else if( FD_UNLIKELY( ctx->repair_intake_listen_port!=0 && ctx->repair_out->mcache==NULL ) ) {

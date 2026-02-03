@@ -12,6 +12,7 @@
 #include "../../flamenco/progcache/fd_progcache_user.h"
 #include "../../flamenco/log_collector/fd_log_collector.h"
 #include "../../disco/metrics/fd_metrics.h"
+#include "../../disco/accstr/fd_accstr_setup.h"
 
 /* The exec tile is responsible for executing single transactions. The
    tile receives a parsed transaction (fd_txn_p_t) and an identifier to
@@ -43,6 +44,10 @@ typedef struct fd_exec_tile_ctx {
   /* Capture context for debugging runtime execution. */
   fd_capture_ctx_t *    capture_ctx;
   fd_capture_link_buf_t cap_exec_out[1];
+
+  /* Account stream context for streaming account updates to external consumers. */
+  fd_accstr_ctx_t       accstr_ctx[1];
+  int                   accstr_enabled;
 
   /* A transaction can be executed as long as there is a valid handle to
      a funk_txn and a bank. These are queried from fd_banks_t and
@@ -192,6 +197,20 @@ returnable_frag( fd_exec_tile_ctx_t * ctx,
           fd_runtime_commit_txn( ctx->runtime, ctx->bank, &ctx->txn_out );
         } else {
           fd_runtime_cancel_txn( ctx->runtime, &ctx->txn_out );
+        }
+
+        /* Publish transaction boundary to accstr for external consumers */
+        if( FD_UNLIKELY( ctx->accstr_enabled ) ) {
+          uchar const * signature = (uchar const *)ctx->txn_in.txn->payload + TXN( ctx->txn_in.txn )->signature_off;
+          ulong slot = fd_bank_slot_get( ctx->bank );
+          /* Account count: use the number of writable accounts in the transaction */
+          ulong account_cnt = ctx->txn_out.accounts.cnt;
+          fd_accstr_publish_txn_boundary( ctx->accstr_ctx,
+                                          slot,
+                                          msg->txn_idx,
+                                          signature,
+                                          account_cnt,
+                                          ctx->txn_out.err.is_committable );
         }
 
         if( FD_UNLIKELY( ctx->accdb->base.ro_active ||
@@ -438,6 +457,25 @@ unprivileged_init( fd_topo_t *      topo,
   ctx->runtime->log.enable_vm_tracing    = 0;
   ctx->runtime->log.tracing_mem          = &ctx->tracing_mem[0][0];
   ctx->runtime->log.capture_ctx          = ctx->capture_ctx;
+
+  /********************************************************************/
+  /* Account stream (accstr)                                          */
+  /********************************************************************/
+
+  /* Try to attach to the accstr workspace. If it exists, enable
+     account streaming. The workspace is created externally before
+     launching tiles (see fd_accstr_wksp_create). */
+  ctx->accstr_enabled = 0;
+  char accstr_wksp_name[ 64 ];
+  FD_TEST( fd_cstr_printf_check( accstr_wksp_name, sizeof(accstr_wksp_name), NULL, "%s_accstr", topo->app_name ) );
+  if( fd_accstr_wksp_attach( ctx->accstr_ctx, accstr_wksp_name ) ) {
+    ctx->accstr_enabled = 1;
+    /* Default: pass all accounts. User can configure filter via config. */
+    fd_accstr_filter_set_pass_all( ctx->accstr_ctx->filter );
+    FD_LOG_NOTICE(( "Account streaming enabled (workspace=%s)", accstr_wksp_name ));
+  } else {
+    FD_LOG_INFO(( "Account streaming disabled (workspace=%s not found)", accstr_wksp_name ));
+  }
 
   memset( &ctx->metrics,          0, sizeof(ctx->metrics)          );
   memset( &ctx->runtime->metrics, 0, sizeof(ctx->runtime->metrics) );
